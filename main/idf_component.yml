@@ -1,4 +1,5 @@
 dependencies:
-  garag/esp-idf-pn532: "^0.2.1"
+  garag/esp-idf-pn532: ^0.2.1
   idf:
-    version: ">=5.3"
+    version: '>=5.3'
+  espressif/mdns: '*'
