@@ -14,7 +14,7 @@ static const char *TAG = "nvs_store";
 #define NFC_LEN   "uid_len"
 
 bool nvs_store_wifi_load(char *ssid, size_t ssid_len, char *pass, size_t pass_len)
-{
+{   //Reads saved SSID and password from NVS (Non-Volatile Storage).
     nvs_handle_t h;
     if (nvs_open(WIFI_NS, NVS_READONLY, &h) != ESP_OK) {
         return false;
@@ -27,7 +27,7 @@ bool nvs_store_wifi_load(char *ssid, size_t ssid_len, char *pass, size_t pass_le
 }
 
 esp_err_t nvs_store_wifi_save(const char *ssid, const char *pass)
-{
+{   //Writes SSID and password into NVS.
     nvs_handle_t h;
     esp_err_t err = nvs_open(WIFI_NS, NVS_READWRITE, &h);
     if (err != ESP_OK) {
@@ -45,7 +45,7 @@ esp_err_t nvs_store_wifi_save(const char *ssid, const char *pass)
 }
 
 void nvs_store_wifi_erase(void)
-{
+{   //deletes saved wifi 
     nvs_handle_t h;
     if (nvs_open(WIFI_NS, NVS_READWRITE, &h) == ESP_OK) {
         nvs_erase_all(h);
@@ -56,7 +56,7 @@ void nvs_store_wifi_erase(void)
 }
 
 bool nvs_store_target_load(uint8_t *uid, uint8_t *uid_len)
-{
+{   //Reads the enrolled NFC (Near Field Communication) tag UID (Unique Identifier).
     nvs_handle_t h;
     if (nvs_open(NFC_NS, NVS_READONLY, &h) != ESP_OK) {
         return false;
@@ -74,7 +74,7 @@ bool nvs_store_target_load(uint8_t *uid, uint8_t *uid_len)
 }
 
 esp_err_t nvs_store_target_save(const uint8_t *uid, uint8_t uid_len)
-{
+{ //Writes the target tag UID into NVS.
     if (uid_len == 0 || uid_len > UID_MAX_LEN) {
         return ESP_ERR_INVALID_ARG;
     }
@@ -95,7 +95,7 @@ esp_err_t nvs_store_target_save(const uint8_t *uid, uint8_t uid_len)
 }
 
 void nvs_store_target_erase(void)
-{
+{   //Writes the target tag UID into NVS.
     nvs_handle_t h;
     if (nvs_open(NFC_NS, NVS_READWRITE, &h) == ESP_OK) {
         nvs_erase_all(h);

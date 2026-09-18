@@ -8,13 +8,13 @@
 
 static const char *TAG = "lab2";
 
-static void on_got_ip(void)
+static void on_got_ip(void) //Starts time sync and the status web page after Wi-Fi gets an IP.
 {
     time_sync_start();
     web_app_start();
 }
 
-void app_main(void)
+void app_main(void) //Boot: init storage, LED, NFC task, then Wi-Fi.
 {
     ESP_LOGI(TAG, "EE-419 Lab 2 starting");
 

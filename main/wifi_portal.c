@@ -58,7 +58,7 @@ static bool boot_button_held(void)
     return false;
 }
 
-static int hex_nibble(char c)
+static int hex_nibble(char c) //for url decode
 {
     if (c >= '0' && c <= '9') return c - '0';
     if (c >= 'a' && c <= 'f') return c - 'a' + 10;
@@ -67,7 +67,7 @@ static int hex_nibble(char c)
 }
 
 static void url_decode(char *dst, size_t dst_len, const char *src, size_t src_len)
-{
+{   //Decodes URL-encoded string 
     size_t di = 0;
     for (size_t si = 0; si < src_len && di + 1 < dst_len; ++si) {
         if (src[si] == '+') {
@@ -89,7 +89,7 @@ static void url_decode(char *dst, size_t dst_len, const char *src, size_t src_le
 }
 
 static bool form_get_field(const char *body, const char *key, char *out, size_t out_len)
-{
+{ //Extracts a field from a URL-encoded form submission. Returns true if found, false if not.
     size_t key_len = strlen(key);
     const char *p = body;
     while (p && *p) {
@@ -124,13 +124,13 @@ static const char *SAVED_HTML =
     "<p>Rebooting. You can close this page.</p></body></html>";
 
 static esp_err_t root_get_handler(httpd_req_t *req)
-{
+{ //Serves the Wi-Fi setup page.    
     httpd_resp_set_type(req, "text/html");
     return httpd_resp_send(req, PORTAL_HTML, HTTPD_RESP_USE_STRLEN);
 }
 
 static esp_err_t save_post_handler(httpd_req_t *req)
-{
+{ //Handles the form submission from the Wi-Fi setup page. Saves SSID and password to NVS and reboots.
     char buf[256];
     if (req->content_len <= 0 || req->content_len >= (int)sizeof(buf)) {
         httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Bad form");
@@ -158,7 +158,7 @@ static esp_err_t save_post_handler(httpd_req_t *req)
 }
 
 static esp_err_t http_404_handler(httpd_req_t *req, httpd_err_code_t err)
-{
+{ //Redirects all unknown requests to the root page.
     (void)err;
     httpd_resp_set_status(req, "302 Found");
     httpd_resp_set_hdr(req, "Location", "/");
@@ -166,7 +166,7 @@ static esp_err_t http_404_handler(httpd_req_t *req, httpd_err_code_t err)
 }
 
 static void start_webserver(void)
-{
+{ //Starts the HTTP server and registers the URI handlers for the Wi-Fi setup page.
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
     config.max_uri_handlers = 8;
     httpd_handle_t server = NULL;
@@ -181,7 +181,7 @@ static void start_webserver(void)
 }
 
 static void dns_task(void *arg)
-{
+{ //Simple DNS server that responds to all queries with the AP IP address. This is used for the captive portal.
     (void)arg;
     int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
     if (sock < 0) {
@@ -229,7 +229,7 @@ static void dns_task(void *arg)
 
 static void wifi_event_handler(void *arg, esp_event_base_t event_base,
                                int32_t event_id, void *event_data)
-{
+{ //Handles Wi-Fi events: connects to AP, retries on failure, and calls the user callback on successful IP acquisition.
     (void)arg;
     if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
         esp_wifi_connect();
@@ -255,7 +255,7 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base,
 }
 
 static void start_captive_portal(void)
-{
+{ //Starts the Wi-Fi AP and the captive portal web server.
     ESP_LOGI(TAG, "Captive portal SSID='%s'", AP_SSID);
     esp_netif_create_default_wifi_ap();
     wifi_config_t ap = {0};
@@ -273,7 +273,7 @@ static void start_captive_portal(void)
 }
 
 static bool start_sta(const char *ssid, const char *pass)
-{
+{ //Starts Wi-Fi in station mode and connects to the given SSID and password. Returns true if successful, false if failed.
     ESP_LOGI(TAG, "STA SSID='%s'", ssid);
     esp_netif_create_default_wifi_sta();
     wifi_config_t sta = {0};
@@ -292,7 +292,7 @@ static bool start_sta(const char *ssid, const char *pass)
 }
 
 void wifi_portal_start(wifi_got_ip_cb_t on_got_ip)
-{
+{ //Starts the Wi-Fi portal. If saved credentials exist, tries to connect to them. Otherwise, starts the captive portal.
     s_got_ip_cb = on_got_ip;
     if (boot_button_held()) {
         nvs_store_wifi_erase();
@@ -321,6 +321,6 @@ void wifi_portal_start(wifi_got_ip_cb_t on_got_ip)
 }
 
 bool wifi_portal_is_connected(void)
-{
+{     //Returns true if Wi-Fi is connected to an AP, false otherwise.
     return s_connected;
 }

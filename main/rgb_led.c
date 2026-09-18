@@ -5,7 +5,7 @@
 #define LED_G_GPIO GPIO_NUM_6
 #define LED_B_GPIO GPIO_NUM_5
 
-void rgb_led_init(void)
+void rgb_led_init(void)     //sets pins as outputs and turns them off
 {
     gpio_config_t io = {
         .pin_bit_mask = (1ULL << LED_R_GPIO) | (1ULL << LED_G_GPIO) | (1ULL << LED_B_GPIO),
@@ -18,7 +18,7 @@ void rgb_led_init(void)
     rgb_led_off();
 }
 
-void rgb_led_set(uint8_t r, uint8_t g, uint8_t b)
+void rgb_led_set(uint8_t r, uint8_t g, uint8_t b)   //Turns red, green, and blue on or off.
 {
     gpio_set_level(LED_R_GPIO, r ? 1 : 0);
     gpio_set_level(LED_G_GPIO, g ? 1 : 0);
@@ -26,6 +26,6 @@ void rgb_led_set(uint8_t r, uint8_t g, uint8_t b)
 }
 
 void rgb_led_off(void)   { rgb_led_set(0, 0, 0); }
-void rgb_led_red(void)   { rgb_led_set(1, 0, 0); }
-void rgb_led_green(void) { rgb_led_set(0, 1, 0); }
-void rgb_led_blue(void)  { rgb_led_set(0, 0, 1); }
+void rgb_led_red(void)   { rgb_led_set(1, 0, 0); }      //red only 
+void rgb_led_green(void) { rgb_led_set(0, 1, 0); }     //green only
+void rgb_led_blue(void)  { rgb_led_set(0, 0, 1); }      //blue only 

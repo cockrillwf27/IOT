@@ -32,7 +32,7 @@ static uint8_t s_current_len;
 static pn532_io_t s_io;
 
 void nfc_format_uid(const uint8_t *uid, uint8_t len, char *out, size_t out_len)
-{
+{ //Formats a UID (Unique Identifier) as a hex string for logging. If the UID is empty, writes "none".
     if (!out || out_len < 3) {
         return;
     }
@@ -51,7 +51,7 @@ void nfc_format_uid(const uint8_t *uid, uint8_t len, char *out, size_t out_len)
 void nfc_get_status(bool *enroll, bool *present,
                     uint8_t *target, uint8_t *target_len,
                     uint8_t *current, uint8_t *current_len)
-{
+{ //Returns the current NFC (Near Field Communication) status: whether in enroll mode, whether a tag is present, and the target and current UIDs (Unique Identifiers).
     xSemaphoreTake(s_lock, portMAX_DELAY);
     if (enroll) {
         *enroll = s_enroll;
@@ -71,7 +71,7 @@ void nfc_get_status(bool *enroll, bool *present,
 }
 
 void nfc_request_enroll(void)
-{
+{ //Requests that the next NFC (Near Field Communication) tag presented be enrolled as the target. This erases any previously stored target.
     xSemaphoreTake(s_lock, portMAX_DELAY);
     s_enroll = true;
     s_target_len = 0;
@@ -83,12 +83,12 @@ void nfc_request_enroll(void)
 }
 
 static bool uids_equal(const uint8_t *a, uint8_t alen, const uint8_t *b, uint8_t blen)
-{
+{ //Returns true if the two UIDs (Unique Identifiers) are equal, false otherwise.
     return alen == blen && alen > 0 && memcmp(a, b, alen) == 0;
 }
 
 static void apply_led(bool enroll, bool present, bool match)
-{
+{ //Sets the RGB LED color based on the NFC (Near Field Communication) status: blue for enroll mode, off for no tag present, green for a matching tag, and red for a non-matching tag.
     if (enroll) {
         rgb_led_blue();
     } else if (!present) {
@@ -101,7 +101,7 @@ static void apply_led(bool enroll, bool present, bool match)
 }
 
 static void i2c_power_on(void)
-{
+{ //Turns on the I2C power GPIO to power the PN532 NFC (Near Field Communication) chip.
     gpio_config_t io = {
         .pin_bit_mask = (1ULL << I2C_POWER_GPIO),
         .mode = GPIO_MODE_OUTPUT,
@@ -114,7 +114,7 @@ static void i2c_power_on(void)
 }
 
 static void nfc_task(void *arg)
-{
+{ //Main NFC (Near Field Communication) task: initializes the PN532 chip, polls for tags, and updates the status and LED.
     (void)arg;
     i2c_power_on();
     vTaskDelay(pdMS_TO_TICKS(50));
@@ -190,7 +190,7 @@ static void nfc_task(void *arg)
 }
 
 void nfc_start(void)
-{
+{ //Starts the NFC (Near Field Communication) task and initializes the status variables. If a target tag UID is stored in NVS, loads it; otherwise, enters enroll mode.
     s_lock = xSemaphoreCreateMutex();
     s_target_len = 0;
     s_current_len = 0;
