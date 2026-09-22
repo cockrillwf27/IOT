@@ -20,5 +20,5 @@ idf_component_register(
         lwip
         mdns
         mqtt
-        json
+        
 )
