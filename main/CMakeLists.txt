@@ -5,8 +5,8 @@ idf_component_register(
         "nvs_store.c"
         "wifi_portal.c"
         "nfc.c"
-        "time_sync.c"
-        "web_app.c"
+       
+       
     INCLUDE_DIRS "."
     PRIV_REQUIRES
         esp_driver_gpio

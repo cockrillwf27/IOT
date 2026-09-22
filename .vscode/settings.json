@@ -32,6 +32,6 @@
     "--query-driver=**",
     "--compile-commands-dir=c:\\Users\\wfcoc\\OneDrive\\Desktop\\IOT\\EE419_lab\\build"
   ],
-  "idf.flashType": "DFU",
+  "idf.flashType": "UART",
   "idf.portWin": "COM3"
 }

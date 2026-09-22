@@ -1,13 +1,12 @@
 #include "nfc.h"
-#include "rgb_led.h"
+#include "app_state.h"
+#include "mqtt_app.h"
 
-#include <stdio.h>
 #include <string.h>
 #include "esp_log.h"
 #include "driver/gpio.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "freertos/semphr.h"
 
 #include "pn532.h"
 #include "pn532_driver_i2c.h"
@@ -22,86 +21,10 @@ static const char *TAG = "nfc";
 #define I2C_PORT        0
 #define POLL_TIMEOUT_MS 250
 
-static SemaphoreHandle_t s_lock;
-static bool s_enroll;
-static bool s_present;
-static uint8_t s_target[UID_MAX_LEN];
-static uint8_t s_target_len;
-static uint8_t s_current[UID_MAX_LEN];
-static uint8_t s_current_len;
 static pn532_io_t s_io;
 
-void nfc_format_uid(const uint8_t *uid, uint8_t len, char *out, size_t out_len)
-{ //Formats a UID (Unique Identifier) as a hex string for logging. If the UID is empty, writes "none".
-    if (!out || out_len < 3) {
-        return;
-    }
-    if (!uid || len == 0) {
-        snprintf(out, out_len, "none");
-        return;
-    }
-    out[0] = '\0';
-    for (uint8_t i = 0; i < len && (strlen(out) + 4) < out_len; i++) {
-        char tmp[4];
-        snprintf(tmp, sizeof(tmp), "%s%02X", (i == 0) ? "" : " ", uid[i]);
-        strlcat(out, tmp, out_len);
-    }
-}
-
-void nfc_get_status(bool *enroll, bool *present,
-                    uint8_t *target, uint8_t *target_len,
-                    uint8_t *current, uint8_t *current_len)
-{ //Returns the current NFC (Near Field Communication) status: whether in enroll mode, whether a tag is present, and the target and current UIDs (Unique Identifiers).
-    xSemaphoreTake(s_lock, portMAX_DELAY);
-    if (enroll) {
-        *enroll = s_enroll;
-    }
-    if (present) {
-        *present = s_present;
-    }
-    if (target && target_len) {
-        memcpy(target, s_target, s_target_len);
-        *target_len = s_target_len;
-    }
-    if (current && current_len) {
-        memcpy(current, s_current, s_current_len);
-        *current_len = s_current_len;
-    }
-    xSemaphoreGive(s_lock);
-}
-
-void nfc_request_enroll(void)
-{ //Requests that the next NFC (Near Field Communication) tag presented be enrolled as the target. This erases any previously stored target.
-    xSemaphoreTake(s_lock, portMAX_DELAY);
-    s_enroll = true;
-    s_target_len = 0;
-    memset(s_target, 0, sizeof(s_target));
-    xSemaphoreGive(s_lock);
-    nvs_store_target_erase();
-    rgb_led_blue();
-    ESP_LOGI(TAG, "Enroll mode: waiting for a new target tag");
-}
-
-static bool uids_equal(const uint8_t *a, uint8_t alen, const uint8_t *b, uint8_t blen)
-{ //Returns true if the two UIDs (Unique Identifiers) are equal, false otherwise.
-    return alen == blen && alen > 0 && memcmp(a, b, alen) == 0;
-}
-
-static void apply_led(bool enroll, bool present, bool match)
-{ //Sets the RGB LED color based on the NFC (Near Field Communication) status: blue for enroll mode, off for no tag present, green for a matching tag, and red for a non-matching tag.
-    if (enroll) {
-        rgb_led_blue();
-    } else if (!present) {
-        rgb_led_off();
-    } else if (match) {
-        rgb_led_green();
-    } else {
-        rgb_led_red();
-    }
-}
-
 static void i2c_power_on(void)
-{ //Turns on the I2C power GPIO to power the PN532 NFC (Near Field Communication) chip.
+{
     gpio_config_t io = {
         .pin_bit_mask = (1ULL << I2C_POWER_GPIO),
         .mode = GPIO_MODE_OUTPUT,
@@ -114,7 +37,7 @@ static void i2c_power_on(void)
 }
 
 static void nfc_task(void *arg)
-{ //Main NFC (Near Field Communication) task: initializes the PN532 chip, polls for tags, and updates the status and LED.
+{
     (void)arg;
     i2c_power_on();
     vTaskDelay(pdMS_TO_TICKS(50));
@@ -128,8 +51,7 @@ static void nfc_task(void *arg)
     do {
         err = pn532_init(&s_io);
         if (err != ESP_OK) {
-            ESP_LOGW(TAG, "PN532 init failed (%s) — check I2C switches and wiring",
-                     esp_err_to_name(err));
+            ESP_LOGW(TAG, "PN532 init failed (%s)", esp_err_to_name(err));
             pn532_release(&s_io);
             vTaskDelay(pdMS_TO_TICKS(1000));
         }
@@ -139,7 +61,6 @@ static void nfc_task(void *arg)
     do {
         err = pn532_get_firmware_version(&s_io, &version);
         if (err != ESP_OK) {
-            ESP_LOGW(TAG, "No PN53x — retrying");
             vTaskDelay(pdMS_TO_TICKS(1000));
         }
     } while (err != ESP_OK);
@@ -148,7 +69,6 @@ static void nfc_task(void *arg)
              (unsigned)((version >> 24) & 0xFF),
              (int)((version >> 16) & 0xFF),
              (int)((version >> 8) & 0xFF));
-
     pn532_set_passive_activation_retries(&s_io, 0x01);
 
     uint8_t uid[UID_MAX_LEN];
@@ -157,54 +77,24 @@ static void nfc_task(void *arg)
     while (1) {
         err = pn532_read_passive_target_id(&s_io, PN532_BRTY_ISO14443A_106KBPS,
                                            uid, &uid_len, POLL_TIMEOUT_MS);
+        const bool present = (err == ESP_OK && uid_len > 0 && uid_len <= UID_MAX_LEN);
+        app_state_set_presence(present, present ? uid : NULL, present ? uid_len : 0);
 
-        xSemaphoreTake(s_lock, portMAX_DELAY);
-        bool enroll = s_enroll;
-        if (err == ESP_OK && uid_len > 0 && uid_len <= UID_MAX_LEN) {
-            s_present = true;
-            s_current_len = uid_len;
-            memcpy(s_current, uid, uid_len);
-
-            if (enroll) {
-                memcpy(s_target, uid, uid_len);
-                s_target_len = uid_len;
-                s_enroll = false;
-                enroll = false;
-                nvs_store_target_save(uid, uid_len);
-                char hex[40];
-                nfc_format_uid(uid, uid_len, hex, sizeof(hex));
-                ESP_LOGI(TAG, "Target stored: %s", hex);
+        bool found = false;
+        if (app_state_take_tag_change(&found)) {
+            char hex[24] = {0};
+            if (present) {
+                app_state_format_uid_hex(uid, uid_len, hex, sizeof(hex));
             }
-        } else {
-            s_present = false;
-            s_current_len = 0;
+            ESP_LOGI(TAG, "tag change present=%d uid=%s targetFound=%d",
+                     present, present ? hex : "none", found);
+            mqtt_app_publish_status(found);
         }
-
-        bool match = s_present && uids_equal(s_current, s_current_len, s_target, s_target_len);
-        bool present = s_present;
-        xSemaphoreGive(s_lock);
-
-        apply_led(enroll, present, match);
-        vTaskDelay(pdMS_TO_TICKS(50));
+        vTaskDelay(pdMS_TO_TICKS(30));
     }
 }
 
 void nfc_start(void)
-{ //Starts the NFC (Near Field Communication) task and initializes the status variables. If a target tag UID is stored in NVS, loads it; otherwise, enters enroll mode.
-    s_lock = xSemaphoreCreateMutex();
-    s_target_len = 0;
-    s_current_len = 0;
-    s_present = false;
-    if (nvs_store_target_load(s_target, &s_target_len)) {
-        s_enroll = false;
-        char hex[40];
-        nfc_format_uid(s_target, s_target_len, hex, sizeof(hex));
-        ESP_LOGI(TAG, "Loaded target UID %s", hex);
-        rgb_led_off();
-    } else {
-        s_enroll = true;
-        ESP_LOGI(TAG, "No target in NVS — enroll (LED blue)");
-        rgb_led_blue();
-    }
+{
     xTaskCreate(nfc_task, "nfc", 4096, NULL, 5, NULL);
 }
