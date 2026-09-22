@@ -5,8 +5,9 @@ idf_component_register(
         "nvs_store.c"
         "wifi_portal.c"
         "nfc.c"
-       
-       
+        "app_state.c"
+        "led_flash.c"
+        "mqtt_app.c"
     INCLUDE_DIRS "."
     PRIV_REQUIRES
         esp_driver_gpio
@@ -18,4 +19,6 @@ idf_component_register(
         nvs_flash
         lwip
         mdns
+        mqtt
+        json
 )
