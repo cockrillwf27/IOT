@@ -7,7 +7,13 @@
 #include "cJSON.h"
 #include "esp_log.h"
 #include "mqtt_client.h"
-#include "mdns.h"
+
+extern const uint8_t device_cert_pem_start[] asm("_binary_device_cert_pem_start");
+extern const uint8_t device_cert_pem_end[] asm("_binary_device_cert_pem_end");
+extern const uint8_t device_key_pem_start[] asm("_binary_device_private_key_start");
+extern const uint8_t device_key_pem_end[] asm("_binary_device_private_key_end");
+extern const uint8_t server_cert_pem_start[] asm("_binary_AmazonRootCA1_pem_start");
+extern const uint8_t server_cert_pem_end[] asm("_binary_AmazonRootCA1_pem_end");
 
 static const char *TAG = "mqtt";
 
@@ -38,16 +44,16 @@ static void mqtt_event(void *arg, esp_event_base_t base, int32_t id, void *data)
 
     switch (id) {
     case MQTT_EVENT_CONNECTED: {
-        ESP_LOGI(TAG, "connected to broker");
-        snprintf(s_cmd_topic, sizeof(s_cmd_topic), "lab3/%s/cmd", DEVICE_ID);
-        snprintf(s_status_topic, sizeof(s_status_topic), "lab3/%s/status", DEVICE_ID);
+        ESP_LOGI(TAG, "connected to AWS");
+        snprintf(s_cmd_topic, sizeof(s_cmd_topic), "ee419_lab/%s/cmd", DEVICE_ID);
+        snprintf(s_status_topic, sizeof(s_status_topic), "ee419_lab/%s/status", DEVICE_ID);
         esp_mqtt_client_subscribe(s_client, s_cmd_topic, 1);
         ESP_LOGI(TAG, "subscribed %s", s_cmd_topic);
 
         char body[96];
         snprintf(body, sizeof(body), "{\"deviceId\":\"%s\"}", DEVICE_ID);
-        esp_mqtt_client_publish(s_client, "lab3/register", body, 0, 1, 0);
-        ESP_LOGI(TAG, "published lab3/register %s", body);
+        esp_mqtt_client_publish(s_client, "ee419_lab/register", body, 0, 1, 0);
+        ESP_LOGI(TAG, "published ee419_lab/register %s", body);
         break;
     }
     case MQTT_EVENT_DATA:
@@ -68,24 +74,6 @@ static void mqtt_event(void *arg, esp_event_base_t base, int32_t id, void *data)
     }
 }
 
-static bool resolve_broker(char *ip, size_t ip_len)
-{
-    mdns_init();
-    mdns_hostname_set(DEVICE_ID);
-    mdns_instance_name_set("EE-419 Lab 3");
-
-    esp_ip4_addr_t addr;
-    memset(&addr, 0, sizeof(addr));
-    esp_err_t err = mdns_query_a("NEB426", 3000, &addr);
-    if (err != ESP_OK) {
-        ESP_LOGW(TAG, "mDNS lookup NEB426.local failed (%s)", esp_err_to_name(err));
-        return false;
-    }
-    snprintf(ip, ip_len, IPSTR, IP2STR(&addr));
-    ESP_LOGI(TAG, "NEB426.local -> %s", ip);
-    return true;
-}
-
 void mqtt_app_publish_status(bool target_found)
 {
     if (!s_client) {
@@ -99,34 +87,47 @@ void mqtt_app_publish_status(bool target_found)
 
 void mqtt_app_start(void)
 {
-    char ip[16] = {0};
-    char uri[48];
-    if (resolve_broker(ip, sizeof(ip))) {
-        snprintf(uri, sizeof(uri), "mqtt://%s:%d", ip, MQTT_BROKER_PORT);
-    } else {
-        snprintf(uri, sizeof(uri), "mqtt://%s:%d", MQTT_BROKER_HOST, MQTT_BROKER_PORT);
-    }
-
-    char lwt[96];
-    snprintf(lwt, sizeof(lwt), "{\"deviceId\":\"%s\"}", DEVICE_ID);
-
     static char s_lwt[96];
-    static char s_uri[48];
-    strlcpy(s_lwt, lwt, sizeof(s_lwt));
-    strlcpy(s_uri, uri, sizeof(s_uri));
+    static const char *alpn_protos[] = { "x-amzn-mqtt-ca", NULL };
+
+    snprintf(s_cmd_topic, sizeof(s_cmd_topic), "ee419_lab/%s/cmd", DEVICE_ID);
+    snprintf(s_status_topic, sizeof(s_status_topic), "ee419_lab/%s/status", DEVICE_ID);
+    snprintf(s_lwt, sizeof(s_lwt), "{\"deviceId\":\"%s\"}", DEVICE_ID);
 
     esp_mqtt_client_config_t cfg = {
-        .broker.address.uri = s_uri,
-        .credentials.client_id = DEVICE_ID,
-        .session.last_will.topic = "lab3/unregister",
-        .session.last_will.msg = s_lwt,
-        .session.last_will.msg_len = 0,
-        .session.last_will.qos = 1,
-        .session.last_will.retain = 0,
-        .session.keepalive = 30,
+        .broker = {
+            .address = {
+                .uri = "mqtts://a2rgwh0228ui2o-ats.iot.us-east-2.amazonaws.com:443",
+            },
+            .verification = {
+                .certificate = (const char *)server_cert_pem_start,
+                .certificate_len = 0,
+                .alpn_protos = alpn_protos,
+            },
+        },
+        .credentials = {
+            .username = NULL,
+            .client_id = DEVICE_ID,
+            .authentication = {
+                .password = NULL,
+                .certificate = (const char *)device_cert_pem_start,
+                .certificate_len = 0,
+                .key = (const char *)device_key_pem_start,
+                .key_len = 0,
+            },
+        },
+        .session = {
+            .last_will = {
+                .topic = "ee419_lab/unregister",
+                .msg = s_lwt,
+                .qos = 0,
+                .retain = false,
+            },
+            .keepalive = 60,
+        },
     };
 
-    ESP_LOGI(TAG, "MQTT uri %s id %s", s_uri, DEVICE_ID);
+    ESP_LOGI(TAG, "MQTT AWS id %s", DEVICE_ID);
     s_client = esp_mqtt_client_init(&cfg);
     esp_mqtt_client_register_event(s_client, ESP_EVENT_ANY_ID, mqtt_event, NULL);
     esp_mqtt_client_start(s_client);
